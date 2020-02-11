@@ -1,6 +1,6 @@
 /*
-	Ractive.js v0.8.14
-	Tue May 23 2017 18:45:38 GMT+0000 (UTC) - commit 9cf380262b870f4fd676e2fd42accf8be9a22c5b
+	Ractive.js v0.8.15-edge
+	Tue Feb 11 2020 15:15:03 GMT+0100 (CET) - commit 029c025d1a822ef4a7b30c34a04eb6e80bd2bd2d
 
 	http://ractivejs.org
 	http://twitter.com/RactiveJS
@@ -428,13 +428,13 @@
 	var welcome;
 	if ( hasConsole ) {
 		var welcomeIntro = [
-			("%cRactive.js %c0.8.14 %cin debug mode, %cmore..."),
+			("%cRactive.js %c0.8.15-edge-029c025d1a822ef4a7b30c34a04eb6e80bd2bd2d %cin debug mode, %cmore..."),
 			'color: rgb(114, 157, 52); font-weight: normal;',
 			'color: rgb(85, 85, 85); font-weight: normal;',
 			'color: rgb(85, 85, 85); font-weight: normal;',
 			'color: rgb(82, 140, 224); font-weight: normal; text-decoration: underline;'
 		];
-		var welcomeMessage = "You're running Ractive 0.8.14 in debug mode - messages will be printed to the console to help you fix problems and optimise your application.\n\nTo disable debug mode, add this line at the start of your app:\n  Ractive.DEBUG = false;\n\nTo disable debug mode when your app is minified, add this snippet:\n  Ractive.DEBUG = /unminified/.test(function(){/*unminified*/});\n\nGet help and support:\n  http://docs.ractivejs.org\n  http://stackoverflow.com/questions/tagged/ractivejs\n  http://groups.google.com/forum/#!forum/ractive-js\n  http://twitter.com/ractivejs\n\nFound a bug? Raise an issue:\n  https://github.com/ractivejs/ractive/issues\n\n";
+		var welcomeMessage = "You're running Ractive 0.8.15-edge-029c025d1a822ef4a7b30c34a04eb6e80bd2bd2d in debug mode - messages will be printed to the console to help you fix problems and optimise your application.\n\nTo disable debug mode, add this line at the start of your app:\n  Ractive.DEBUG = false;\n\nTo disable debug mode when your app is minified, add this snippet:\n  Ractive.DEBUG = /unminified/.test(function(){/*unminified*/});\n\nGet help and support:\n  http://docs.ractivejs.org\n  http://stackoverflow.com/questions/tagged/ractivejs\n  http://groups.google.com/forum/#!forum/ractive-js\n  http://twitter.com/ractivejs\n\nFound a bug? Raise an issue:\n  https://github.com/ractivejs/ractive/issues\n\n";
 
 		welcome = function () {
 			if ( Ractive.WELCOME_MESSAGE === false ) {
@@ -8907,8 +8907,10 @@
 	};
 
 	var ComputationChild = (function (Model) {
-		function ComputationChild () {
-			Model.apply(this, arguments);
+		function ComputationChild ( parent, key ) {
+			Model.call( this, parent, key );
+
+			this.dirty = true;
 		}
 
 		ComputationChild.prototype = Object.create( Model && Model.prototype );
@@ -8917,8 +8919,12 @@
 		ComputationChild.prototype.get = function get ( shouldCapture ) {
 			if ( shouldCapture ) capture( this );
 
-			var parentValue = this.parent.get();
-			return parentValue ? parentValue[ this.key ] : undefined;
+			if ( this.dirty ) {
+				var parentValue = this.parent.get();
+				this.value = parentValue ? parentValue[ this.key ] : undefined;
+			}
+
+			return this.value;
 		};
 
 		ComputationChild.prototype.handleChange = function handleChange$1 () {
@@ -9192,17 +9198,6 @@
 			this.base = resolve$2( fragment, template );
 			var baseResolver;
 
-			if ( !this.base ) {
-				baseResolver = fragment.resolve( template.r, function ( model ) {
-					this$1.base = model;
-					this$1.bubble();
-
-					removeFromArray( this$1.resolvers, baseResolver );
-				});
-
-				this.resolvers.push( baseResolver );
-			}
-
 			var intermediary = this.intermediary = {
 				handleChange: function () { return this$1.handleChange(); },
 				rebinding: function ( next, previous ) {
@@ -9265,6 +9260,20 @@
 				model.register( intermediary );
 				return model;
 			});
+
+			if ( !this.base ) {
+				baseResolver = fragment.resolve( template.r, function ( model ) {
+					this$1.base = model;
+					this$1.base.register( intermediary );
+					this$1.bubble();
+
+					removeFromArray( this$1.resolvers, baseResolver );
+				});
+
+				this.resolvers.push( baseResolver );
+			} else {
+				this.base.register( intermediary );
+			}
 
 			this.isUnresolved = true;
 			this.bubble();
@@ -10584,12 +10593,23 @@
 
 				if ( wrapper.locked ) return;
 				setting = true;
-				dependants.forEach( function (ref) {
-					var ractive = ref.ractive;
-					var keypath = ref.keypath;
 
-					ractive.set( keypath, value );
-				});
+				if ( wrapper.setting ) {
+					dependants.forEach( function (ref) {
+						var ractive = ref.ractive;
+						var keypath = ref.keypath;
+
+						ractive.viewmodel.joinAll( splitKeypathI( keypath ) ).mark();
+					});
+				} else {
+					dependants.forEach( function (ref) {
+						var ractive = ref.ractive;
+						var keypath = ref.keypath;
+
+						ractive.set( keypath, value );
+					});
+				}
+
 				setting = false;
 			},
 			enumerable: true
@@ -10647,7 +10667,9 @@
 	};
 
 	MagicWrapper.prototype.set = function set ( key, value ) {
+		this.setting = true;
 		this.value[ key ] = value;
+		this.setting = false;
 	};
 
 	MagicWrapper.prototype.teardown = function teardown () {
@@ -12734,15 +12756,17 @@
 
 			node.addEventListener( 'change', handleDomEvent, false );
 
-			if ( !lazy ) {
-				node.addEventListener( 'input', this.handler, false );
+			if ( node.type !== 'file' ) {
+				if ( !lazy ) {
+					node.addEventListener( 'input', this.handler, false );
 
-				if ( node.attachEvent ) {
-					node.addEventListener( 'keyup', this.handler, false );
+					if ( node.attachEvent ) {
+						node.addEventListener( 'keyup', this.handler, false );
+					}
 				}
-			}
 
-			node.addEventListener( 'blur', handleBlur, false );
+				node.addEventListener( 'blur', handleBlur, false );
+			}
 		};
 
 		GenericBinding.prototype.unrender = function unrender () {
@@ -17173,7 +17197,7 @@
 		magic:          { value: magicSupported },
 
 		// version
-		VERSION:        { value: '0.8.14' },
+		VERSION:        { value: '0.8.15-edge-029c025d1a822ef4a7b30c34a04eb6e80bd2bd2d' },
 
 		// plugins
 		adaptors:       { writable: true, value: {} },
