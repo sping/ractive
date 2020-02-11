@@ -55,15 +55,17 @@ export default class GenericBinding extends Binding {
 
 		node.addEventListener( 'change', handleDomEvent, false );
 
-		if ( !lazy ) {
-			node.addEventListener( 'input', this.handler, false );
+		if ( node.type !== 'file' ) {
+			if ( !lazy ) {
+				node.addEventListener( 'input', this.handler, false );
 
-			if ( node.attachEvent ) {
-				node.addEventListener( 'keyup', this.handler, false );
+				if ( node.attachEvent ) {
+					node.addEventListener( 'keyup', this.handler, false );
+				}
 			}
-		}
 
-		node.addEventListener( 'blur', handleBlur, false );
+			node.addEventListener( 'blur', handleBlur, false );
+		}
 	}
 
 	unrender () {
